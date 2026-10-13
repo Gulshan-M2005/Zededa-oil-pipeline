@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oil Pipeline SCADA Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: #07111c;
+    color: #e8f1f8;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.header {
+    background: #0b1826;
+    border-bottom: 1px solid #1d3a50;
+    padding: 18px 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.title-area h1 {
+    margin: 0;
+    font-size: 24px;
+    letter-spacing: 1px;
+}
+
+.title-area p {
+    margin: 6px 0 0;
+    color: #8da6b8;
+    font-size: 13px;
+}
+
+.header-status {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.status-box {
+    background: #102334;
+    border: 1px solid #1e4158;
+    border-radius: 8px;
+    padding: 9px 13px;
+    font-size: 12px;
+}
+
+.online {
+    color: #35e88a;
+}
+
+.offline {
+    color: #ff6262;
+}
+
+.version {
+    color: #55c7ff;
+}
+
+.container {
+    padding: 20px;
+    max-width: 1600px;
+    margin: auto;
+}
+
+.section-title {
+    margin: 20px 0 12px;
+    font-size: 17px;
+    color: #9ddcff;
+    letter-spacing: 0.5px;
+}
+
+.alarm-banner {
+    display: none;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    border: 1px solid;
+    font-weight: bold;
+}
+
+.alarm-banner.info {
+    background: #102334;
+    border-color: #2c526c;
+    color: #9ddcff;
+}
+
+.alarm-banner.warning {
+    background: #3a2b08;
+    border-color: #d8a623;
+    color: #ffd85a;
+}
+
+.alarm-banner.critical {
+    background: #3d0c12;
+    border-color: #ff404f;
+    color: #ff6670;
+    animation: criticalPulse 1s infinite;
+}
+
+@keyframes criticalPulse {
+    0% {
+        box-shadow: 0 0 0 rgba(255, 50, 70, 0);
+    }
+
+    50% {
+        box-shadow: 0 0 22px rgba(255, 50, 70, 0.35);
+    }
+
+    100% {
+        box-shadow: 0 0 0 rgba(255, 50, 70, 0);
+    }
+}
+
+.sound-panel {
+    background: #0b1826;
+    border: 1px solid #1d3a50;
+    border-radius: 10px;
+    padding: 12px 15px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.sound-info {
+    font-size: 13px;
+    color: #9db4c5;
+}
+
+.sound-button {
+    border: 1px solid #2f6685;
+    background: #102b3d;
+    color: #8ed9ff;
+    padding: 9px 16px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.sound-button:hover {
+    background: #163b52;
+}
+
+.sound-button.enabled {
+    border-color: #35e88a;
+    color: #35e88a;
+}
+
+.pipeline-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    overflow-x: auto;
+    padding: 20px 5px;
+}
+
+.station-node {
+    min-width: 230px;
+    background: #0c1b29;
+    border: 1px solid #24516b;
+    border-radius: 12px;
+    padding: 18px;
+    text-align: center;
+}
+
+.station-node h3 {
+    margin: 0 0 12px;
+    color: #8ed9ff;
+    font-size: 18px;
+}
+
+.station-pressure {
+    font-size: 29px;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+.station-unit {
+    color: #7892a5;
+    font-size: 12px;
+}
+
+.station-status {
+    margin-top: 12px;
+    padding: 6px;
+    border-radius: 6px;
+    background: #102334;
+    font-size: 12px;
+}
+
+.flow-arrow {
+    font-size: 28px;
+    color: #42c8ff;
+    padding: 0 15px;
+}
+
+.cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.card {
+    background: #0b1826;
+    border: 1px solid #1c3a4e;
+    border-radius: 10px;
+    padding: 18px;
+}
+
+.card h3 {
+    margin: 0 0 15px;
+    color: #9ddcff;
+    font-size: 16px;
+}
+
+.metric {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #152c3d;
+    font-size: 13px;
+}
+
+.metric:last-child {
+    border-bottom: none;
+}
+
+.metric-label {
+    color: #7893a5;
+}
+
+.metric-value {
+    font-weight: bold;
+}
+
+.normal {
+    color: #35e88a;
+}
+
+.warning {
+    color: #ffd34d;
+}
+
+.critical {
+    color: #ff5968;
+}
+
+.invalid {
+    color: #ff5968;
+}
+
+.differential-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.diff-card {
+    background: #0b1826;
+    border: 1px solid #1c3a4e;
+    border-radius: 10px;
+    padding: 20px;
+}
+
+.diff-name {
+    color: #8da6b8;
+    font-size: 13px;
+}
+
+.diff-value {
+    font-size: 30px;
+    font-weight: bold;
+    margin-top: 8px;
+}
+
+.chart-container {
+    background: #0b1826;
+    border: 1px solid #1c3a4e;
+    border-radius: 10px;
+    padding: 20px;
+    height: 430px;
+}
+
+canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.history-container {
+    background: #0b1826;
+    border: 1px solid #1c3a4e;
+    border-radius: 10px;
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 900px;
+}
+
+thead {
+    background: #102334;
+}
+
+th {
+    padding: 12px;
+    text-align: left;
+    color: #8ed9ff;
+    font-size: 12px;
+}
+
+td {
+    padding: 11px 12px;
+    border-top: 1px solid #173042;
+    font-size: 12px;
+}
+
+tr:hover {
+    background: #0e2232;
+}
+
+.footer {
+    text-align: center;
+    color: #617b8d;
+    font-size: 11px;
+    padding: 25px;
+}
+
+.badge {
+    display: inline-block;
+    padding: 5px 9px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.badge-info {
+    background: #12334a;
+    color: #7ed5ff;
+}
+
+.badge-warning {
+    background: #493a0d;
+    color: #ffdb55;
+}
+
+.badge-critical {
+    background: #4a1017;
+    color: #ff6572;
+}
+
+@media (max-width: 1000px) {
+    .cards {
+        grid-template-columns: 1fr;
+    }
+
+    .differential-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pipeline-flow {
+        justify-content: flex-start;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+    <div class="title-area">
+        <h1>OIL PIPELINE SCADA</h1>
+        <p>ZEDEDA Edge Pressure Monitoring System</p>
+    </div>
+
+    <div class="header-status">
+        <div class="status-box">
+            MQTT:
+            <span id="mqttStatus" class="offline">CONNECTING</span>
+        </div>
+
+        <div class="status-box">
+            EDGE NODE:
+            <span id="edgeStatus" class="online">ONLINE</span>
+        </div>
+
+        <div class="status-box version">
+            VERSION:
+            <span id="version">v1.7</span>
+        </div>
+
+        <div class="status-box">
+            CYCLE:
+            <span id="cycle">0</span>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+
+    <div id="alarmBanner" class="alarm-banner info">
+        <span id="alarmText">SYSTEM INITIALIZING...</span>
+    </div>
+
+    <div class="sound-panel">
+        <div class="sound-info">
+            Browser horn is used for CRITICAL alarms.
+            Click the button once to enable alarm sound.
+        </div>
+
+        <button id="soundButton" class="sound-button" onclick="enableAlarmSound()">
+            🔊 Enable Alarm Sound
+        </button>
+    </div>
+
+    <div class="section-title">
+        Pipeline Flow
+    </div>
+
+    <div class="pipeline-flow">
+
+        <div class="station-node">
+            <h3>INLET</h3>
+            <div id="flowPressureInlet" class="station-pressure">
+                -- PSI
+            </div>
+            <div class="station-unit">
+                Pump / Inlet Station
+            </div>
+            <div id="flowStatusInlet" class="station-status">
+                INFO
+            </div>
+        </div>
+
+        <div class="flow-arrow">
+            →
+        </div>
+
+        <div class="station-node">
+            <h3>MIDLINE</h3>
+            <div id="flowPressureMidline" class="station-pressure">
+                -- PSI
+            </div>
+            <div class="station-unit">
+                Pipeline Midline
+            </div>
+            <div id="flowStatusMidline" class="station-status">
+                INFO
+            </div>
+        </div>
+
+        <div class="flow-arrow">
+            →
+        </div>
+
+        <div class="station-node">
+            <h3>OUTLET</h3>
+            <div id="flowPressureOutlet" class="station-pressure">
+                -- PSI
+            </div>
+            <div class="station-unit">
+                Metering / Outlet Station
+            </div>
+            <div id="flowStatusOutlet" class="station-status">
+                INFO
+            </div>
+        </div>
+
+    </div>
+
+    <div class="section-title">
+        Station Monitoring
+    </div>
+
+    <div class="cards">
+
+        <div class="card">
+            <h3>INLET Station</h3>
+
+            <div class="metric">
+                <span class="metric-label">Pressure</span>
+                <span id="pressureInlet" class="metric-value">-- PSI</span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">Temperature</span>
+                <span id="tempInlet" class="metric-value">-- °C</span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">dP/dt</span>
+                <span id="dpdtInlet" class="metric-value">-- PSI/s</span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">Sensor</span>
+                <span id="sensorInlet" class="metric-value normal">
+                    VALID
+                </span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">Alarm</span>
+                <span id="alarmInlet" class="metric-value normal">
+                    INFO
+                </span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>MIDLINE Station</h3>
+
+            <div class="metric">
+                <span class="metric-label">Pressure</span>
+                <span id="pressureMidline" class="metric-value">-- PSI</span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">Temperature</span>
+                <span id="tempMidline" class="metric-value">-- °C</span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">dP/dt</span>
+                <span id="dpdtMidline" class="metric-value">-- PSI/s</span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">Sensor</span>
+                <span id="sensorMidline" class="metric-value normal">
+                    VALID
+                </span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">Alarm</span>
+                <span id="alarmMidline" class="metric-value normal">
+                    INFO
+                </span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>OUTLET Station</h3>
+
+            <div class="metric">
+                <span class="metric-label">Pressure</span>
+                <span id="pressureOutlet" class="metric-value">-- PSI</span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">Temperature</span>
+                <span id="tempOutlet" class="metric-value">-- °C</span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">dP/dt</span>
+                <span id="dpdtOutlet" class="metric-value">-- PSI/s</span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">Sensor</span>
+                <span id="sensorOutlet" class="metric-value normal">
+                    VALID
+                </span>
+            </div>
+
+            <div class="metric">
+                <span class="metric-label">Alarm</span>
+                <span id="alarmOutlet" class="metric-value normal">
+                    INFO
+                </span>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="section-title">
+        Differential Pressure
+    </div>
+
+    <div class="differential-grid">
+
+        <div class="diff-card">
+            <div class="diff-name">
+                INLET → MIDLINE
+            </div>
+
+            <div id="diffInletMidline" class="diff-value normal">
+                -- PSI
+            </div>
+        </div>
+
+        <div class="diff-card">
+            <div class="diff-name">
+                MIDLINE → OUTLET
+            </div>
+
+            <div id="diffMidlineOutlet" class="diff-value normal">
+                -- PSI
+            </div>
+        </div>
+
+    </div>
+
+    <div class="section-title">
+        Live Pressure Trend
+    </div>
+
+    <div class="chart-container">
+        <canvas id="pressureChart"></canvas>
+    </div>
+
+    <div class="section-title">
+        Alarm History
+    </div>
+
+    <div class="history-container">
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Station</th>
+                    <th>Pressure</th>
+                    <th>Temperature</th>
+                    <th>dP/dt</th>
+                    <th>Severity</th>
+                    <th>Message</th>
+                    <th>Horn</th>
+                    <th>Beacon</th>
+                </tr>
+            </thead>
+
+            <tbody id="alarmHistory">
+            </tbody>
+        </table>
+
+    </div>
+
+</div>
+
+<div class="footer">
+    ZEDEDA Edge Application v1.7 |
+    Oil Pipeline Pressure Monitoring System |
+    MQTT: pipeline/mohamedammagulshan/alerts |
+    Last Update: <span id="lastUpdate">--</span>
+</div>
+
+<script>
+
+const broker = "wss://test.mosquitto.org:8081/mqtt";
+const topic = "pipeline/mohamedammagulshan/alerts";
+
+let mqttClient = null;
+
+let audioContext = null;
+let soundEnabled = false;
+let hornInterval = null;
+
+const chartLabels = [];
+const inletData = [];
+const midlineData = [];
+const outletData = [];
+
+const ctx = document.getElementById("pressureChart");
+
+const pressureChart = new Chart(ctx, {
+    type: "line",
+
+    data: {
+        labels: chartLabels,
+
+        datasets: [
+            {
+                label: "INLET Pressure",
+                data: inletData,
+                borderColor: "#42c8ff",
+                backgroundColor: "#42c8ff",
+                borderWidth: 2,
+                pointRadius: 2,
+                spanGaps: true,
+                tension: 0.25,
+                fill: false
+            },
+            {
+                label: "MIDLINE Pressure",
+                data: midlineData,
+                borderColor: "#35e88a",
+                backgroundColor: "#35e88a",
+                borderWidth: 2,
+                pointRadius: 2,
+                spanGaps: true,
+                tension: 0.25,
+                fill: false
+            },
+            {
+                label: "OUTLET Pressure",
+                data: outletData,
+                borderColor: "#ff9f43",
+                backgroundColor: "#ff9f43",
+                borderWidth: 2,
+                pointRadius: 2,
+                spanGaps: true,
+                tension: 0.25,
+                fill: false
+            }
+        ]
+    },
+
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+
+        animation: false,
+
+        scales: {
+            x: {
+                ticks: {
+                    color: "#7893a5"
+                },
+
+                grid: {
+                    color: "#173042"
+                }
+            },
+
+            y: {
+                title: {
+                    display: true,
+                    text: "Pressure PSI",
+                    color: "#9ddcff"
+                },
+
+                ticks: {
+                    color: "#7893a5"
+                },
+
+                grid: {
+                    color: "#173042"
+                }
+            }
+        },
+
+        plugins: {
+            legend: {
+                labels: {
+                    color: "#d9e9f3"
+                }
+            }
+        }
+    }
+});
+
+
+async function enableAlarmSound() {
+    try {
+        const AudioContextClass =
+            window.AudioContext || window.webkitAudioContext;
+
+        if (!AudioContextClass) {
+            alert("This browser does not support alarm audio. Please use Chrome or Edge.");
+            return;
+        }
+
+        if (!audioContext) audioContext = new AudioContextClass();
+
+        if (audioContext.state === "suspended") {
+            await audioContext.resume();
+        }
+
+        soundEnabled = audioContext.state === "running";
+
+        const button = document.getElementById("soundButton");
+        if (soundEnabled) {
+            button.innerHTML = "🔊 Alarm Sound Enabled";
+            button.classList.add("enabled");
+
+            // Short confirmation beep so the operator knows sound is enabled.
+            const now = audioContext.currentTime;
+            createHornTone(now, 750, 0.18);
+        } else {
+            button.innerHTML = "🔊 Click to Enable Alarm Sound";
+            button.classList.remove("enabled");
+            alert("Browser audio is still blocked. Click the sound button again.");
+        }
+    } catch (error) {
+        console.error("Audio initialization failed:", error);
+        alert("Could not enable alarm sound. Check browser audio permissions.");
+    }
+}
+
+function createHornTone(
+    startTime,
+    frequency,
+    duration
+) {
+
+    if (!audioContext) {
+        return;
+    }
+
+    const oscillator =
+        audioContext.createOscillator();
+
+    const gain =
+        audioContext.createGain();
+
+    oscillator.type = "sawtooth";
+
+    oscillator.frequency.setValueAtTime(
+        frequency,
+        startTime
+    );
+
+    gain.gain.setValueAtTime(
+        0.0001,
+        startTime
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+        0.35,
+        startTime + 0.03
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        startTime + duration
+    );
+
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+
+    oscillator.start(startTime);
+
+    oscillator.stop(
+        startTime + duration + 0.05
+    );
+}
+
+
+function playHornOnce() {
+
+    if (!soundEnabled) {
+        return;
+    }
+
+    if (!audioContext) {
+        return;
+    }
+
+    if (audioContext.state === "suspended") {
+        audioContext.resume();
+    }
+
+    const start =
+        audioContext.currentTime;
+
+    createHornTone(
+        start,
+        750,
+        0.45
+    );
+
+    createHornTone(
+        start + 0.55,
+        500,
+        0.45
+    );
+
+    createHornTone(
+        start + 1.10,
+        750,
+        0.45
+    );
+}
+
+
+function startHorn() {
+    if (!soundEnabled || !audioContext) {
+        console.warn("Critical alarm received, but browser sound is not enabled. Click Enable Alarm Sound once.");
+        return;
+    }
+
+    if (hornInterval !== null) return;
+
+    if (audioContext.state === "suspended") {
+        audioContext.resume().then(function() {
+            if (soundEnabled && hornInterval === null) {
+                playHornOnce();
+                hornInterval = setInterval(playHornOnce, 3000);
+            }
+        }).catch(function(error) {
+            console.error("Could not resume alarm audio:", error);
+        });
+        return;
+    }
+
+    playHornOnce();
+    hornInterval = setInterval(playHornOnce, 3000);
+}
+
+function stopHorn() {
+
+    if (hornInterval !== null) {
+
+        clearInterval(
+            hornInterval
+        );
+
+        hornInterval = null;
+    }
+}
+
+
+function setSeverityClass(
+    element,
+    severity
+) {
+
+    if (!element) {
+        return;
+    }
+
+    element.classList.remove(
+        "normal",
+        "warning",
+        "critical",
+        "invalid"
+    );
+
+    if (severity === "CRITICAL") {
+        element.classList.add("critical");
+    } else if (severity === "WARNING") {
+        element.classList.add("warning");
+    } else {
+        element.classList.add("normal");
+    }
+}
+
+
+function updateStation(
+    data
+) {
+
+    const station =
+        data.station;
+
+    const pressure =
+        Number(data.pressure_psi || 0);
+
+    const temperature =
+        Number(data.temperature_c || 0);
+
+    const dpdt =
+        Number(data.dp_dt || 0);
+
+    const severity =
+        data.severity || "INFO";
+
+    const valid =
+        data.sensor_valid !== false;
+
+    const key =
+        station.toLowerCase();
+
+    const pressureElement =
+        document.getElementById(
+            "pressure" +
+            station.charAt(0) +
+            station.slice(1).toLowerCase()
+        );
+
+    const tempElement =
+        document.getElementById(
+            "temp" +
+            station.charAt(0) +
+            station.slice(1).toLowerCase()
+        );
+
+    const dpdtElement =
+        document.getElementById(
+            "dpdt" +
+            station.charAt(0) +
+            station.slice(1).toLowerCase()
+        );
+
+    const sensorElement =
+        document.getElementById(
+            "sensor" +
+            station.charAt(0) +
+            station.slice(1).toLowerCase()
+        );
+
+    const alarmElement =
+        document.getElementById(
+            "alarm" +
+            station.charAt(0) +
+            station.slice(1).toLowerCase()
+        );
+
+    if (pressureElement) {
+        pressureElement.textContent =
+            pressure.toFixed(2) + " PSI";
+    }
+
+    if (tempElement) {
+        tempElement.textContent =
+            temperature.toFixed(2) + " °C";
+    }
+
+    if (dpdtElement) {
+        dpdtElement.textContent =
+            dpdt.toFixed(2) + " PSI/s";
+    }
+
+    if (sensorElement) {
+
+        sensorElement.textContent =
+            valid ? "VALID" : "INVALID";
+
+        sensorElement.classList.remove(
+            "normal",
+            "critical"
+        );
+
+        sensorElement.classList.add(
+            valid ? "normal" : "critical"
+        );
+    }
+
+    if (alarmElement) {
+
+        alarmElement.textContent =
+            severity;
+
+        setSeverityClass(
+            alarmElement,
+            severity
+        );
+    }
+
+    updateFlowStation(
+        station,
+        pressure,
+        severity
+    );
+}
+
+
+function updateFlowStation(
+    station,
+    pressure,
+    severity
+) {
+
+    let suffix = "";
+
+    if (station === "INLET") {
+        suffix = "Inlet";
+    } else if (station === "MIDLINE") {
+        suffix = "Midline";
+    } else if (station === "OUTLET") {
+        suffix = "Outlet";
+    }
+
+    const pressureElement =
+        document.getElementById(
+            "flowPressure" + suffix
+        );
+
+    const statusElement =
+        document.getElementById(
+            "flowStatus" + suffix
+        );
+
+    if (pressureElement) {
+
+        pressureElement.textContent =
+            pressure.toFixed(2) + " PSI";
+
+        setSeverityClass(
+            pressureElement,
+            severity
+        );
+    }
+
+    if (statusElement) {
+
+        statusElement.textContent =
+            severity;
+
+        setSeverityClass(
+            statusElement,
+            severity
+        );
+    }
+}
+
+
+function updateDifferential(
+    data
+) {
+
+    if (!data) {
+        return;
+    }
+
+    const inletMidline =
+        Number(
+            data.INLET_MIDLINE || 0
+        );
+
+    const midlineOutlet =
+        Number(
+            data.MIDLINE_OUTLET || 0
+        );
+
+    const element1 =
+        document.getElementById(
+            "diffInletMidline"
+        );
+
+    const element2 =
+        document.getElementById(
+            "diffMidlineOutlet"
+        );
+
+    if (element1) {
+
+        element1.textContent =
+            inletMidline.toFixed(2) +
+            " PSI";
+
+        setDifferentialClass(
+            element1,
+            inletMidline
+        );
+    }
+
+    if (element2) {
+
+        element2.textContent =
+            midlineOutlet.toFixed(2) +
+            " PSI";
+
+        setDifferentialClass(
+            element2,
+            midlineOutlet
+        );
+    }
+}
+
+
+function setDifferentialClass(
+    element,
+    value
+) {
+
+    element.classList.remove(
+        "normal",
+        "warning",
+        "critical"
+    );
+
+    if (value >= 50) {
+        element.classList.add(
+            "critical"
+        );
+    } else if (value >= 30) {
+        element.classList.add(
+            "warning"
+        );
+    } else {
+        element.classList.add(
+            "normal"
+        );
+    }
+}
+
+
+function updateChart(data) {
+    if (!pressureChart) return;
+
+    const now = new Date().toLocaleTimeString();
+    const station = String(data.station || "").toUpperCase();
+
+    // Accept either a single-station MQTT event or a combined status payload.
+    let inlet = null, midline = null, outlet = null;
+
+    if (data.INLET && typeof data.INLET === "object") {
+        inlet = Number(data.INLET.pressure_psi);
+    } else if (station === "INLET" && data.pressure_psi !== undefined) {
+        inlet = Number(data.pressure_psi);
+    }
+
+    if (data.MIDLINE && typeof data.MIDLINE === "object") {
+        midline = Number(data.MIDLINE.pressure_psi);
+    } else if (station === "MIDLINE" && data.pressure_psi !== undefined) {
+        midline = Number(data.pressure_psi);
+    }
+
+    if (data.OUTLET && typeof data.OUTLET === "object") {
+        outlet = Number(data.OUTLET.pressure_psi);
+    } else if (station === "OUTLET" && data.pressure_psi !== undefined) {
+        outlet = Number(data.pressure_psi);
+    }
+
+    // Preserve the latest known value for stations not included in this message.
+    const last = (arr) => arr.length ? arr[arr.length - 1] : null;
+    if (inlet === null || !Number.isFinite(inlet)) inlet = last(inletData);
+    if (midline === null || !Number.isFinite(midline)) midline = last(midlineData);
+    if (outlet === null || !Number.isFinite(outlet)) outlet = last(outletData);
+
+    // Do not add empty chart points before a pressure reading has arrived.
+    if (inlet === null && midline === null && outlet === null) return;
+
+    chartLabels.push(now);
+    inletData.push(inlet);
+    midlineData.push(midline);
+    outletData.push(outlet);
+
+    while (chartLabels.length > 60) {
+        chartLabels.shift();
+        inletData.shift();
+        midlineData.shift();
+        outletData.shift();
+    }
+
+    pressureChart.update("none");
+}
+
+function updateAlarmBanner(
+    data
+) {
+
+    const banner =
+        document.getElementById(
+            "alarmBanner"
+        );
+
+    const text =
+        document.getElementById(
+            "alarmText"
+        );
+
+    const severity =
+        data.severity || "INFO";
+
+    banner.classList.remove(
+        "info",
+        "warning",
+        "critical"
+    );
+
+    if (severity === "CRITICAL") {
+
+        banner.classList.add(
+            "critical"
+        );
+
+        text.textContent =
+            "CRITICAL ALARM | " +
+            data.station +
+            " | " +
+            data.message;
+
+    } else if (severity === "WARNING") {
+
+        banner.classList.add(
+            "warning"
+        );
+
+        text.textContent =
+            "WARNING | " +
+            data.station +
+            " | " +
+            data.message;
+
+    } else {
+
+        banner.classList.add(
+            "info"
+        );
+
+        text.textContent =
+            "SYSTEM NORMAL | " +
+            data.message;
+    }
+
+    banner.style.display =
+        "block";
+}
+
+
+function addAlarmHistory(
+    data
+) {
+
+    const table =
+        document.getElementById(
+            "alarmHistory"
+        );
+
+    const row =
+        document.createElement("tr");
+
+    const time =
+        new Date(
+            data.timestamp
+        ).toLocaleString();
+
+    let badgeClass =
+        "badge-info";
+
+    if (data.severity === "WARNING") {
+        badgeClass =
+            "badge-warning";
+    }
+
+    if (data.severity === "CRITICAL") {
+        badgeClass =
+            "badge-critical";
+    }
+
+    row.innerHTML = `
+        <td>${time}</td>
+        <td>${data.station || "-"}</td>
+        <td>${Number(data.pressure_psi || 0).toFixed(2)} PSI</td>
+        <td>${Number(data.temperature_c || 0).toFixed(2)} °C</td>
+        <td>${Number(data.dp_dt || 0).toFixed(2)} PSI/s</td>
+        <td>
+            <span class="badge ${badgeClass}">
+                ${data.severity || "INFO"}
+            </span>
+        </td>
+        <td>${data.message || "-"}</td>
+        <td>${data.horn ? "ON" : "OFF"}</td>
+        <td>${data.beacon ? "ON" : "OFF"}</td>
+    `;
+
+    table.insertBefore(
+        row,
+        table.firstChild
+    );
+
+    while (
+        table.children.length > 20
+    ) {
+        table.removeChild(
+            table.lastChild
+        );
+    }
+}
+
+
+function handleMqttMessage(data) {
+    if (!data || typeof data !== "object") return;
+
+    document.getElementById("lastUpdate").textContent =
+        new Date().toLocaleString();
+
+    if (data.cycle !== undefined) {
+        document.getElementById("cycle").textContent = data.cycle;
+    }
+
+    const station = String(data.station || "").toUpperCase();
+    const isStationReading =
+        ["INLET", "MIDLINE", "OUTLET"].includes(station) &&
+        data.pressure_psi !== undefined;
+
+    // A single station reading updates that station and plots it.
+    if (isStationReading) {
+        updateStation(data);
+        updateChart(data);
+    }
+
+    // A combined status message may contain all three stations.
+    const hasCombinedStations =
+        data.INLET || data.MIDLINE || data.OUTLET;
+
+    if (hasCombinedStations) {
+        ["INLET", "MIDLINE", "OUTLET"].forEach(function(name) {
+            const reading = data[name];
+            if (reading && typeof reading === "object") {
+                updateStation({
+                    station: name,
+                    pressure_psi: reading.pressure_psi,
+                    temperature_c: reading.temperature_c,
+                    dp_dt: reading.dp_dt,
+                    severity: reading.severity || data.severity || "INFO",
+                    sensor_valid: reading.sensor_valid
+                });
+            }
+        });
+        updateChart(data);
+    }
+
+    if (data.differential) {
+        updateDifferential(data.differential);
+    } else if (data.INLET_MIDLINE !== undefined ||
+               data.MIDLINE_OUTLET !== undefined) {
+        updateDifferential(data);
+    }
+
+    // Treat alarm event names case-insensitively; some edge scripts send
+    // "alarm", while others send "ALARM" or rely on severity alone.
+    const eventType = String(data.event_type || data.type || "").toUpperCase();
+    const severity = String(data.severity || "INFO").toUpperCase();
+    const isAlarm = eventType === "ALARM" ||
+                    eventType === "CRITICAL" ||
+                    eventType === "WARNING" ||
+                    severity === "WARNING" ||
+                    severity === "CRITICAL";
+
+    if (isAlarm) {
+        updateAlarmBanner(data);
+
+        // Avoid adding ordinary telemetry as an alarm-history row.
+        if (eventType === "ALARM" || severity === "WARNING" ||
+            severity === "CRITICAL") {
+            addAlarmHistory(data);
+        }
+
+        if (severity === "CRITICAL") {
+            // Sound only after the user has enabled audio in the browser.
+            startHorn();
+        } else if (severity !== "CRITICAL") {
+            stopHorn();
+        }
+    }
+}
+
+function connectMqtt() {
+
+    const status =
+        document.getElementById(
+            "mqttStatus"
+        );
+
+    status.textContent =
+        "CONNECTING";
+
+    status.className =
+        "warning";
+
+    try {
+
+        mqttClient = mqtt.connect(
+            broker,
+            {
+                reconnectPeriod: 3000,
+                connectTimeout: 10000,
+                clean: true
+            }
+        );
+
+        mqttClient.on(
+            "connect",
+            function() {
+
+                status.textContent =
+                    "CONNECTED";
+
+                status.className =
+                    "online";
+
+                mqttClient.subscribe(
+                    topic,
+                    function(error) {
+
+                        if (error) {
+
+                            console.error(
+                                "MQTT subscribe error:",
+                                error
+                            );
+
+                        } else {
+
+                            console.log(
+                                "Subscribed to:",
+                                topic
+                            );
+                        }
+                    }
+                );
+            }
+        );
+
+        mqttClient.on(
+            "reconnect",
+            function() {
+
+                status.textContent =
+                    "RECONNECTING";
+
+                status.className =
+                    "warning";
+            }
+        );
+
+        mqttClient.on(
+            "offline",
+            function() {
+
+                status.textContent =
+                    "OFFLINE";
+
+                status.className =
+                    "offline";
+            }
+        );
+
+        mqttClient.on(
+            "error",
+            function(error) {
+
+                console.error(
+                    "MQTT error:",
+                    error
+                );
+
+                status.textContent =
+                    "ERROR";
+
+                status.className =
+                    "offline";
+            }
+        );
+
+        mqttClient.on(
+            "message",
+            function(receivedTopic, payload) {
+
+                if (
+                    receivedTopic !== topic
+                ) {
+                    return;
+                }
+
+                try {
+
+                    const data =
+                        JSON.parse(
+                            payload.toString()
+                        );
+
+                    handleMqttMessage(
+                        data
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "Invalid MQTT JSON:",
+                        error
+                    );
+                }
+            }
+        );
+
+    } catch (error) {
+
+        console.error(
+            "MQTT connection error:",
+            error
+        );
+
+        status.textContent =
+            "ERROR";
+
+        status.className =
+            "offline";
+    }
+}
+
+
+async function loadStatus() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/status"
+            );
+
+        if (!response.ok) {
+            return;
+        }
+
+        const data =
+            await response.json();
+
+        document.getElementById(
+            "version"
+        ).textContent =
+            data.version || "v1.7";
+
+        document.getElementById(
+            "cycle"
+        ).textContent =
+            data.cycle || 0;
+
+        const stations =
+            [
+                "INLET",
+                "MIDLINE",
+                "OUTLET"
+            ];
+
+        stations.forEach(
+            function(station) {
+
+                const pressure =
+                    Number(
+                        data.pressure?.[station] || 0
+                    );
+
+                const temperature =
+                    Number(
+                        data.temperature?.[station] || 0
+                    );
+
+                const dpdt =
+                    Number(
+                        data.dp_dt?.[station] || 0
+                    );
+
+                const severity =
+                    data.severity?.[station] ||
+                    "INFO";
+
+                const valid =
+                    data.sensor_valid?.[station] !== false;
+
+                updateStation({
+                    station: station,
+                    pressure_psi: pressure,
+                    temperature_c: temperature,
+                    dp_dt: dpdt,
+                    severity: severity,
+                    sensor_valid: valid
+                });
+            }
+        );
+
+        updateDifferential(
+            data.differential
+        );
+
+        if (
+            data.mqtt_connected
+        ) {
+
+            document.getElementById(
+                "mqttStatus"
+            ).textContent =
+                "CONNECTED";
+
+            document.getElementById(
+                "mqttStatus"
+            ).className =
+                "online";
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Status fetch failed:",
+            error
+        );
+    }
+}
+
+
+setInterval(
+    loadStatus,
+    5000
+);
+
+
+setInterval(
+    function() {
+
+        if (
+            chartLabels.length > 0
+        ) {
+            pressureChart.update();
+        }
+
+    },
+    5000
+);
+
+
+window.addEventListener(
+    "load",
+    function() {
+
+        connectMqtt();
+
+        loadStatus();
+
+        document.getElementById(
+            "lastUpdate"
+        ).textContent =
+            new Date().toLocaleString();
+    }
+);
+
+</script>
+
+</body>
+</html>
