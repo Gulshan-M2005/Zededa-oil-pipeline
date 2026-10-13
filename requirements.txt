@@ -1,0 +1,4 @@
+Flask
+PyYAML
+paho-mqtt
+twilio
